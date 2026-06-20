@@ -1,4 +1,8 @@
 <script setup lang="ts">
+defineProps<{
+  progress?: Record<string, { discovered: number; total: number; remaining: number; streak: number }>;
+}>();
+
 const emit = defineEmits<{
   explore: [habitat: string];
   home: [];
@@ -15,14 +19,14 @@ const locations = [
 </script>
 
 <template>
-  <svg class="island-map" viewBox="0 0 900 560" role="img" aria-label="萌灵小岛地图">
+  <svg class="island-map" viewBox="0 0 900 600" role="img" aria-label="萌灵小岛地图">
     <defs>
       <filter id="mapShadow" x="-10%" y="-10%" width="120%" height="130%">
         <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#31575a" flood-opacity=".18" />
       </filter>
     </defs>
-    <rect width="900" height="560" rx="34" fill="#bde9f5" />
-    <path d="M0 410c97-48 168-38 250 7 105 58 185 51 275 8 96-46 192-43 375 33v102H0Z" fill="#8dd7e8" opacity=".75" />
+    <rect width="900" height="600" rx="34" fill="#bde9f5" />
+    <path d="M0 410c97-48 168-38 250 7 105 58 185 51 275 8 96-46 192-43 375 33v142H0Z" fill="#8dd7e8" opacity=".75" />
     <path d="M123 317c11-137 136-230 304-230 186 0 339 99 345 238 5 117-124 191-324 191-196 0-334-72-325-199Z" fill="#a8de7c" stroke="#31575a" stroke-width="7" filter="url(#mapShadow)" />
     <path d="M183 334c37-87 140-144 265-144 131 0 234 63 265 153-52 57-143 86-274 86-122 0-209-32-256-95Z" fill="#c8eb91" opacity=".75" />
 
@@ -31,7 +35,7 @@ const locations = [
       <path d="m700 396 62-58 63 58Z" fill="#ff9f7c" stroke="#31575a" stroke-width="6" stroke-linejoin="round" />
       <rect x="748" y="430" width="28" height="43" rx="8" fill="#8f6c55" />
       <circle cx="770" cy="451" r="3" fill="#fff6c6" />
-      <text x="762" y="505" text-anchor="middle" class="map-text">小屋</text>
+      <text x="762" y="494" text-anchor="middle" class="map-text">小屋</text>
     </g>
 
     <g
@@ -73,7 +77,12 @@ const locations = [
         <circle cx="224" cy="423" r="25" fill="#efffff" stroke="#31575a" stroke-width="5" />
       </g>
 
-      <text :x="item.x" :y="item.y + 86" text-anchor="middle" class="map-text">{{ item.label }}</text>
+      <text :x="item.x" :y="item.y + 72" text-anchor="middle" class="map-text">{{ item.label }}</text>
+      <rect :x="item.x - 38" :y="item.y - 78" width="76" height="32" rx="16" fill="#fffaf0" stroke="#31575a" stroke-width="4" />
+      <text :x="item.x" :y="item.y - 55" text-anchor="middle" class="map-progress-text">
+        {{ progress?.[item.habitat]?.discovered ?? 0 }}/{{ progress?.[item.habitat]?.total ?? 0 }}
+      </text>
     </g>
   </svg>
 </template>
+
