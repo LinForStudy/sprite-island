@@ -1,11 +1,12 @@
-﻿<script setup lang="ts">
-import { computed, ref } from 'vue';
+<script setup lang="ts">
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import SpiritArt from './SpiritArt.vue';
 import { expToNext, getStats } from '../data/battle';
 import { battleEnemy, battlePlayer, battlePlayerPet, getEquippedItems, getPetBattleStats, showView, state, useBattleSkill } from '../stores/gameState';
 import type { Skill } from '../data/spirits';
 
 const isAnimating = ref(false);
+const actionLocked = ref(false);
 const playerAttack = ref(false);
 const enemyAttack = ref(false);
 const enemyHit = ref(false);
@@ -15,6 +16,7 @@ const effectElement = ref('草');
 const enemyDamageText = ref('');
 const playerDamageText = ref('');
 const healText = ref('');
+const timers: number[] = [];
 
 const playerStats = computed(() => {
   if (!battlePlayer.value || !battlePlayerPet.value) return null;
@@ -64,6 +66,20 @@ function skillLabel(skill: Skill) {
   return skill.type === 'physical' ? '力量' : '魔法';
 }
 
+function schedule(callback: () => void, delay: number) {
+  const id = window.setTimeout(() => {
+    const index = timers.indexOf(id);
+    if (index >= 0) timers.splice(index, 1);
+    callback();
+  }, delay);
+  timers.push(id);
+  return id;
+}
+
+function clearBattleTimers() {
+  while (timers.length) window.clearTimeout(timers.pop());
+}
+
 function playTone(frequency: number, start: number, duration: number, type: OscillatorType, volume = 0.05) {
   const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextCtor) return;
@@ -109,22 +125,48 @@ function clearEffects() {
   healText.value = '';
 }
 
+function unlockAction() {
+  clearEffects();
+  isAnimating.value = false;
+  actionLocked.value = false;
+}
+
 function maybeShowResult() {
-  if (state.battle.status !== 'active') showView('battleResult');
+  if (state.view === 'battle' && state.battle.status !== 'active') showView('battleResult');
+}
+
+watch(() => state.battle.status, (status) => {
+  if (state.view !== 'battle') return;
+  if (status !== 'active') schedule(maybeShowResult, 260);
+});
+
+onBeforeUnmount(() => {
+  clearBattleTimers();
+  actionLocked.value = false;
+});
+
+function leaveBattle(view: 'map' | 'home', message: string) {
+  clearBattleTimers();
+  unlockAction();
+  showView(view, message);
 }
 
 function useSkillWithEffects(skill: Skill) {
-  if (isAnimating.value || state.battle.status !== 'active' || !playerStats.value || !battlePlayerPet.value) return;
+  if (actionLocked.value || isAnimating.value || state.battle.status !== 'active' || !playerStats.value || !battlePlayerPet.value) return;
+
   const beforeEnemyHp = state.battle.enemyHp;
   const beforePlayerHp = battlePlayerPet.value.currentHp ?? playerStats.value.hp;
+  clearBattleTimers();
   clearEffects();
+  actionLocked.value = true;
   isAnimating.value = true;
   playerAttack.value = true;
   effectKind.value = skill.type;
   effectElement.value = skill.element ?? battlePlayer.value?.element ?? '草';
   playBattleSound(skill);
 
-  window.setTimeout(() => {
+  schedule(() => {
+    if (state.view !== 'battle' || state.battle.status !== 'active') return;
     useBattleSkill(skill);
     const afterEnemyHp = state.battle.enemyHp;
     const afterPlayerHp = battlePlayerPet.value?.currentHp ?? beforePlayerHp;
@@ -138,8 +180,8 @@ function useSkillWithEffects(skill: Skill) {
       enemyDamageText.value = `-${enemyDamage}`;
     }
     if (playerDamage > 0) {
-      window.setTimeout(() => { enemyAttack.value = true; }, 180);
-      window.setTimeout(() => {
+      schedule(() => { enemyAttack.value = true; }, 180);
+      schedule(() => {
         enemyAttack.value = false;
         playerHit.value = true;
         playerDamageText.value = `-${playerDamage}`;
@@ -147,9 +189,8 @@ function useSkillWithEffects(skill: Skill) {
     }
   }, 260);
 
-  window.setTimeout(() => {
-    clearEffects();
-    isAnimating.value = false;
+  schedule(() => {
+    unlockAction();
     maybeShowResult();
   }, 1100);
 }
@@ -162,8 +203,8 @@ function useSkillWithEffects(skill: Skill) {
         <p class="eyebrow">{{ state.battle.habitat }} · 野外挑战</p>
         <h1>萌灵对战</h1>
       </div>
-      <button class="soft-button compact" type="button" @click="showView('map', '回到小岛，换个地方也可以挑战。')">回小岛</button>
-      <button class="soft-button compact" type="button" @click="showView('home', '回小屋休息一下，恢复生命再出发。')">去小屋</button>
+      <button class="soft-button compact" type="button" :disabled="actionLocked" @click="leaveBattle('map', '回到小岛，换个地方也可以挑战。')">回小岛</button>
+      <button class="soft-button compact" type="button" :disabled="actionLocked" @click="leaveBattle('home', '回小屋休息一下，恢复生命再出发。')">去小屋</button>
     </header>
 
     <div class="battle-layout" :class="{ 'battle-layout--animating': isAnimating }">
@@ -197,7 +238,15 @@ function useSkillWithEffects(skill: Skill) {
 
       <aside class="battle-command-panel">
         <div class="skill-grid" v-if="state.battle.status === 'active'">
-          <button v-for="skill in battlePlayer.skills" :key="skill.id" class="skill-button" type="button" :disabled="isAnimating" @click="useSkillWithEffects(skill)">
+          <button
+            v-for="skill in battlePlayer.skills"
+            :key="skill.id"
+            class="skill-button"
+            type="button"
+            :disabled="actionLocked || isAnimating || state.battle.status !== 'active'"
+            @pointerdown.prevent
+            @click.prevent="useSkillWithEffects(skill)"
+          >
             <strong>{{ skill.name }}</strong><span>{{ skillLabel(skill) }} · {{ skill.description }}</span>
           </button>
         </div>

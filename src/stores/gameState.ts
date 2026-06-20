@@ -6,6 +6,16 @@ import { rarityWeights, spirits, type BattleStats, type Skill, type Spirit } fro
 type ViewName = 'map' | 'encounter' | 'dex' | 'home' | 'battlePrep' | 'battle' | 'battleResult';
 export type CaptureResult = 'captured' | 'already' | 'failed' | 'none';
 export type BattleStatus = 'idle' | 'active' | 'won' | 'lost';
+export type BattleCaptureStatus = 'locked' | 'idle' | 'drawing' | 'ready' | 'capturing' | 'captured' | 'failed' | 'already';
+
+interface BattleCaptureBall {
+  id: string;
+  name: string;
+  tier: string;
+  color: string;
+  multiplier: number;
+  weight: number;
+}
 
 export interface PetState {
   affection: number;
@@ -57,10 +67,21 @@ interface BattleResultState {
   playerMaxHp: number;
   enemyName: string;
   enemyLevel: number;
+  enemySpiritId: string;
   expGained: number;
   levelMessages: string[];
   equipmentDropName: string;
   equipmentDropRarity: string;
+  captureEligible: boolean;
+  captureAlreadyOwned: boolean;
+  captureStatus: BattleCaptureStatus;
+  captureBallName: string;
+  captureBallTier: string;
+  captureBallColor: string;
+  captureBallMultiplier: number;
+  captureChance: number;
+  captureAttempted: boolean;
+  captureMessage: string;
   message: string;
   returnTarget: 'map';
 }
@@ -69,6 +90,12 @@ const storageKey = 'sprite-island-save-v1';
 const backupStorageKey = 'sprite-island-save-v1-backup';
 const preResetBackupKey = 'sprite-island-save-v1-pre-reset-backup';
 const saveVersion = 2;
+const battleCaptureBalls: BattleCaptureBall[] = [
+  { id: 'star', name: '星糖球', tier: '普通', color: 'star', multiplier: 1, weight: 48 },
+  { id: 'pink', name: '粉晶球', tier: '精良', color: 'pink', multiplier: 1.25, weight: 30 },
+  { id: 'gold', name: '金光球', tier: '稀有', color: 'gold', multiplier: 1.55, weight: 16 },
+  { id: 'rainbow', name: '彩虹球', tier: '传说', color: 'rainbow', multiplier: 1.85, weight: 6 }
+];
 const pityThreshold = 12;
 const undiscoveredBoost = 3;
 
@@ -90,10 +117,21 @@ const defaultBattleResult = (): BattleResultState => ({
   playerMaxHp: 0,
   enemyName: '',
   enemyLevel: 1,
+  enemySpiritId: '',
   expGained: 0,
   levelMessages: [],
   equipmentDropName: '',
   equipmentDropRarity: '',
+  captureEligible: false,
+  captureAlreadyOwned: false,
+  captureStatus: 'locked',
+  captureBallName: '',
+  captureBallTier: '',
+  captureBallColor: '',
+  captureBallMultiplier: 1,
+  captureChance: 0,
+  captureAttempted: false,
+  captureMessage: '',
   message: '',
   returnTarget: 'map'
 });
@@ -392,9 +430,42 @@ function levelUpIfNeeded(spiritId: string) {
   return messages;
 }
 
+function rollBattleCaptureBall() {
+  const total = battleCaptureBalls.reduce((sum, ball) => sum + ball.weight, 0);
+  let roll = Math.random() * total;
+  for (const ball of battleCaptureBalls) {
+    roll -= ball.weight;
+    if (roll <= 0) return ball;
+  }
+  return battleCaptureBalls[0];
+}
+
+function battleCaptureChance(enemy: Spirit, ball: BattleCaptureBall) {
+  const levelGap = Math.max(0, state.battle.enemyLevel - (state.battleResult.playerLevel || 1));
+  const winBonus = 0.18;
+  const challengeBonus = Math.min(0.1, levelGap * 0.035);
+  const chance = enemy.catchRate * ball.multiplier + winBonus + challengeBonus;
+  return Math.max(0.12, Math.min(0.92, Number(chance.toFixed(2))));
+}
+
+function capturePetFromBattle(enemy: Spirit) {
+  state.save.discovered[enemy.spiritId] = true;
+  state.save.captured[enemy.spiritId] = {
+    affection: 32,
+    hunger: 72,
+    cleanliness: 70,
+    mood: '信任',
+    level: 1,
+    exp: 0,
+    currentHp: getStats(enemy, 1).hp,
+    equipment: emptyEquipmentSlots()
+  };
+}
 function setBattleResult(status: BattleStatus, player: Spirit, enemy: Spirit, expGained: number, levelMessages: string[], equipmentDrop: Equipment | null) {
   const pet = normalizePet(player.spiritId);
   const stats = getPetBattleStatsInternal(player.spiritId);
+  const alreadyOwned = Boolean(state.save.captured[enemy.spiritId]);
+  const canCapture = status === 'won' && !alreadyOwned;
   state.battleResult = {
     status,
     playerName: player.name,
@@ -403,10 +474,25 @@ function setBattleResult(status: BattleStatus, player: Spirit, enemy: Spirit, ex
     playerMaxHp: stats.hp,
     enemyName: enemy.name,
     enemyLevel: state.battle.enemyLevel,
+    enemySpiritId: enemy.spiritId,
     expGained,
     levelMessages,
     equipmentDropName: equipmentDrop?.name ?? '',
     equipmentDropRarity: equipmentDrop?.rarity ?? '',
+    captureEligible: canCapture,
+    captureAlreadyOwned: status === 'won' && alreadyOwned,
+    captureStatus: status !== 'won' ? 'locked' : alreadyOwned ? 'already' : 'idle',
+    captureBallName: '',
+    captureBallTier: '',
+    captureBallColor: '',
+    captureBallMultiplier: 1,
+    captureChance: 0,
+    captureAttempted: false,
+    captureMessage: status !== 'won'
+      ? '这次没有收服机会，回小屋恢复后还能再来。'
+      : alreadyOwned
+        ? `${enemy.name}已经住在小屋里啦，这次不会重复收服。`
+        : `打赢了${enemy.name}，可以抽一次收服球试着邀请它入住。`,
     message: status === 'won' ? `${player.name}赢下了野外挑战。` : '回小屋恢复后还能再来。',
     returnTarget: 'map'
   };
@@ -712,6 +798,70 @@ export function useBattleSkill(skill: Skill) {
   save();
 }
 
+export function drawBattleCaptureBall() {
+  const result = state.battleResult;
+  if (result.status !== 'won') {
+    result.captureMessage = '只有挑战胜利后才可以收服。';
+    return;
+  }
+  if (result.captureAlreadyOwned || state.save.captured[result.enemySpiritId]) {
+    result.captureEligible = false;
+    result.captureAlreadyOwned = true;
+    result.captureStatus = 'already';
+    result.captureMessage = `${result.enemyName}已经住在小屋里啦，这次不会重复收服。`;
+    return;
+  }
+  if (result.captureAttempted) {
+    result.captureMessage = '这场战斗已经试过一次啦，下次再挑战还有机会。';
+    return;
+  }
+  const enemy = spiritById(result.enemySpiritId);
+  const ball = rollBattleCaptureBall();
+  result.captureStatus = 'ready';
+  result.captureBallName = ball.name;
+  result.captureBallTier = ball.tier;
+  result.captureBallColor = ball.color;
+  result.captureBallMultiplier = ball.multiplier;
+  result.captureChance = battleCaptureChance(enemy, ball);
+  result.captureMessage = `抽到了${ball.name}！这次收服机会约 ${Math.round(result.captureChance * 100)}%。`;
+  state.message = result.captureMessage;
+}
+
+export function tryBattleCaptureAfterBattle(): CaptureResult {
+  const result = state.battleResult;
+  if (result.status !== 'won' || !result.captureEligible) return 'none';
+  if (result.captureAlreadyOwned || state.save.captured[result.enemySpiritId]) {
+    result.captureStatus = 'already';
+    result.captureAlreadyOwned = true;
+    result.captureEligible = false;
+    result.captureMessage = `${result.enemyName}已经住在小屋里啦，这次不会重复收服。`;
+    return 'already';
+  }
+  if (result.captureAttempted) {
+    result.captureMessage = '这场战斗已经试过一次啦，下次再挑战还有机会。';
+    return 'failed';
+  }
+  if (!result.captureBallName) drawBattleCaptureBall();
+
+  const enemy = spiritById(result.enemySpiritId);
+  result.captureAttempted = true;
+  const success = Math.random() <= result.captureChance;
+  if (success) {
+    capturePetFromBattle(enemy);
+    result.captureStatus = 'captured';
+    result.captureEligible = false;
+    result.captureMessage = `成功收服！${enemy.name}加入了萌灵小屋。`;
+    state.message = result.captureMessage;
+    save();
+    return 'captured';
+  }
+
+  result.captureStatus = 'failed';
+  result.captureMessage = `差一点点，${enemy.name}还想再练一会儿。下次打赢还可以再试。`;
+  state.message = result.captureMessage;
+  save();
+  return 'failed';
+}
 export function restoreAllPets() {
   normalizeAllPets();
   for (const spiritId of Object.keys(state.save.captured)) {
