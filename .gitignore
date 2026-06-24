@@ -3,3 +3,6 @@ dist
 .npm-cache
 .vite
 *.tsbuildinfo
+android/
+%SystemDrive%/
+*.json
