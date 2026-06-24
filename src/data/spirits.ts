@@ -1,6 +1,7 @@
 export type ElementType = '草' | '水' | '火' | '电' | '土' | '风';
 export type Rarity = '常见' | '稀有' | '传奇' | '神话';
 export type SkillType = 'physical' | 'magic' | 'heal';
+export type SkillRole = 'basic' | 'element' | 'guard' | 'ultimate';
 
 export interface BattleStats {
   hp: number;
@@ -13,9 +14,18 @@ export interface Skill {
   id: string;
   name: string;
   type: SkillType;
+  role: SkillRole;
   power: number;
   element?: ElementType;
   description: string;
+}
+
+export interface VisualProfile {
+  epithet: string;
+  speciesType: string;
+  designDetails: { title: string; description: string }[];
+  poses: { title: string; description: string }[];
+  imagePrompt: string;
 }
 
 export interface Spirit {
@@ -30,6 +40,7 @@ export interface Spirit {
   primaryColor: string;
   accentColor: string;
   shape: string;
+  visualProfile: VisualProfile;
   baseStats: BattleStats;
   growth: BattleStats;
   skills: Skill[];
@@ -44,6 +55,61 @@ export const rarityWeights: Record<Rarity, number> = {
 
 export const rarityLabels: Rarity[] = ['常见', '稀有', '传奇', '神话'];
 
+const elementVisualTheme: Record<ElementType, { place: string; glow: string; detail: string; pose: string }> = {
+  草: { place: '梦境花园与柔软草坡', glow: '嫩叶、花瓣、露珠和萤光', detail: '叶脉纹样与花芽装饰', pose: '在花风里轻轻摇摆' },
+  水: { place: '月光池塘与珊瑚浅湾', glow: '泡泡、水纹、珍珠和月光', detail: '水波纹样与半透明鳍翼', pose: '在水面上浮游打转' },
+  火: { place: '暖石台地与霞光火花', glow: '小火星、暖灯、琥珀光和霞色流焰', detail: '火绒纹样与发光暖角', pose: '踩着暖光向前跃起' },
+  电: { place: '星磁塔与蓝紫极光', glow: '电弧、星线、磁光和跳动亮点', detail: '雷纹回路与星线装饰', pose: '带着电光快速闪跳' },
+  土: { place: '山洞晶石与古老石阶', glow: '晶石、岩纹、苔点和琥珀微光', detail: '岩层纹样与晶石护甲', pose: '稳稳伏在发光岩台上' },
+  风: { place: '彩云桥与高空风带', glow: '云朵、羽毛、风铃和彩虹流光', detail: '轻羽纹样与透明风带', pose: '被风托起轻轻漂浮' }
+};
+
+const rarityVisualTone: Record<Rarity, { aura: string; title: string }> = {
+  常见: { aura: '干净可爱，少量柔光粒子', title: '小岛新朋友' },
+  稀有: { aura: '精致装饰，半透明材质，更多闪光点', title: '稀有灵宠' },
+  传奇: { aura: '明显光环，专属纹样，环境特效更丰富', title: '传说守护者' },
+  神话: { aura: '完整梦幻场景，流光粒子，神圣而温柔的高级感', title: '神话梦灵' }
+};
+
+
+const specialVisualProfiles: Record<string, Partial<VisualProfile>> = {
+  bloomwhale: {
+    epithet: '梦境花海的守眠者',
+    speciesType: '灵宠 / 花鲸 / 草丛守护者',
+    designDetails: [
+      { title: '花眠冠', description: '头顶花苞会随呼吸轻轻开合，飘出安静的花香。' },
+      { title: '花海印记', description: '额前纹样像一朵发光小花，守护草丛里的梦。' },
+      { title: '柔叶鳍', description: '半透明叶鳍像花瓣一样摆动，游过的地方会落下星粉。' }
+    ],
+    poses: [
+      { title: '浮游姿态', description: '在花浪和露珠间慢慢漂浮。' },
+      { title: '安睡姿态', description: '蜷在花云上睡觉，呼吸会吹开小花。' },
+      { title: '开心姿态', description: '尾巴卷起花风，笑得像刚醒来的梦。' }
+    ]
+  }
+};
+
+function makeVisualProfile(data: Omit<Spirit, 'baseStats' | 'growth' | 'skills' | 'visualProfile'>): VisualProfile {
+  const theme = elementVisualTheme[data.element];
+  const rarity = rarityVisualTone[data.rarity];
+  const base: VisualProfile = {
+    epithet: `${data.habitat}里的${rarity.title}`,
+    speciesType: `灵宠 / ${data.element}系 / ${data.rarity}`,
+    designDetails: [
+      { title: `${data.element}系纹样`, description: `身上带着${theme.detail}，一眼能看出来自${data.habitat}。` },
+      { title: '发光装饰', description: `周围环绕${theme.glow}，稀有度越高光效越明显。` },
+      { title: '小岛记号', description: `保留${data.favoriteFood}相关的小装饰，让它像真正住在萌灵小岛。` }
+    ],
+    poses: [
+      { title: '待机姿态', description: theme.pose },
+      { title: '安静姿态', description: `在${theme.place}里休息，表情放松又亲近。` },
+      { title: '开心姿态', description: `靠近喜欢的人时，会用${data.element}系光效表达开心。` }
+    ],
+    imagePrompt: `Dreamy fairy-tale Q-version spirit pet for a children's collection game, ${data.name}, ${data.description}, ${data.element} element, ${data.rarity} rarity, habitat ${data.habitat}, scene: ${theme.place}, visual effects: ${theme.glow}, rarity treatment: ${rarity.aura}, soft crystal lighting, delicate ornamental details, rounded cute body, high quality game concept art, no text, no logo, no watermark, no UI, full scene background.`
+  };
+  const special = specialVisualProfiles[data.spiritId] ?? {};
+  return { ...base, ...special };
+}
 const baseByRarity: Record<Rarity, BattleStats> = {
   常见: { hp: 34, power: 9, defense: 7, magic: 8 },
   稀有: { hp: 39, power: 11, defense: 9, magic: 10 },
@@ -76,6 +142,24 @@ const elementSkill: Record<ElementType, { name: string; type: SkillType; power: 
   风: { name: '轻风刃', type: 'magic', power: 8, description: '甩出一道轻轻的风。' }
 };
 
+
+const guardSkill: Record<ElementType, { name: string; description: string }> = {
+  草: { name: '青草护盾', description: '回复一点生命，下回合少受伤。' },
+  水: { name: '泡泡守护', description: '回复一点生命，下回合少受伤。' },
+  火: { name: '热浪护体', description: '回复一点生命，下回合少受伤。' },
+  电: { name: '闪光屏障', description: '回复一点生命，下回合少受伤。' },
+  土: { name: '岩石护甲', description: '回复一点生命，下回合少受伤。' },
+  风: { name: '旋风闪避', description: '回复一点生命，下回合少受伤。' }
+};
+
+const ultimateSkill: Record<ElementType, { name: string; type: SkillType; power: number; description: string }> = {
+  草: { name: '森林星光', type: 'magic', power: 22, description: '能量满后释放，星光和叶片一起飞舞。' },
+  水: { name: '月潮泡影', type: 'magic', power: 22, description: '能量满后释放，浪花像月光一样亮起。' },
+  火: { name: '流星火雨', type: 'magic', power: 24, description: '能量满后释放，落下闪亮的小火星。' },
+  电: { name: '雷光连闪', type: 'magic', power: 24, description: '能量满后释放，电光连续跳跃。' },
+  土: { name: '山心震击', type: 'physical', power: 23, description: '能量满后释放，岩石护着身体冲出去。' },
+  风: { name: '彩风奥舞', type: 'magic', power: 23, description: '能量满后释放，旋风托起彩色光带。' }
+};
 const normalSkillNames: Record<ElementType, string> = {
   草: '叶子拍',
   水: '水花拍',
@@ -102,37 +186,51 @@ function makeSkills(id: string, element: ElementType): Skill[] {
       id: `${id}-tap`,
       name: normalSkillNames[element],
       type: 'physical',
+      role: 'basic',
       power: 6,
-      description: '最基础也最稳的一下。'
+      description: '最基础也最稳定的一下。'
     }
   ];
 
-  if (healerIds.has(id)) {
-    skills.push({
-      id: `${id}-heal`,
-      name: element === '水' ? '清水抱抱' : '小小恢复',
-      type: 'heal',
-      power: 12,
-      description: '恢复一点生命。'
-    });
-  } else {
-    const skill = elementSkill[element];
-    skills.push({
-      id: `${id}-element`,
-      name: skill.name,
-      type: skill.type,
-      power: skill.power,
-      element,
-      description: skill.description
-    });
-  }
+  const skill = elementSkill[element];
+  skills.push({
+    id: `${id}-element`,
+    name: skill.name,
+    type: skill.type,
+    role: 'element',
+    power: skill.power,
+    element,
+    description: skill.description
+  });
+
+  const guard = guardSkill[element];
+  skills.push({
+    id: `${id}-guard`,
+    name: healerIds.has(id) ? (element === '水' ? '清水抱抱' : '小小恢复') : guard.name,
+    type: 'heal',
+    role: 'guard',
+    power: healerIds.has(id) ? 14 : 9,
+    element,
+    description: healerIds.has(id) ? '恢复生命，并撑起一层小护盾。' : guard.description
+  });
+
+  const ultimate = ultimateSkill[element];
+  skills.push({
+    id: `${id}-ultimate`,
+    name: ultimate.name,
+    type: ultimate.type,
+    role: 'ultimate',
+    power: ultimate.power,
+    element,
+    description: ultimate.description
+  });
 
   return skills;
 }
-
-function spirit(data: Omit<Spirit, 'baseStats' | 'growth' | 'skills'>): Spirit {
+function spirit(data: Omit<Spirit, 'baseStats' | 'growth' | 'skills' | 'visualProfile'>): Spirit {
   return {
     ...data,
+    visualProfile: makeVisualProfile(data),
     baseStats: addStats(baseByRarity[data.rarity], elementStatBias[data.element]),
     growth: addStats(growthByRarity[data.rarity], elementStatBias[data.element]),
     skills: makeSkills(data.spiritId, data.element)
@@ -187,7 +285,18 @@ export const spirits: Spirit[] = [
   spirit({ spiritId: 'cloudfluffrabbit', name: '绒云兔', element: '风', rarity: '常见', habitat: '彩云桥', catchRate: 0.77, description: '耳朵软得像云朵，跳起来会留下短短的白色尾迹。', favoriteFood: '云朵饼干', primaryColor: '#bfe9e5', accentColor: '#fff6c6', shape: 'cloudfluff-rabbit' }),
   spirit({ spiritId: 'ribbonsparrow', name: '飘带雀', element: '风', rarity: '稀有', habitat: '彩云桥', catchRate: 0.46, description: '尾羽像两条小飘带，飞过彩云桥时会打漂亮的结。', favoriteFood: '薄荷果片', primaryColor: '#9fded8', accentColor: '#ffb8be', shape: 'ribbon-sparrow' }),
   spirit({ spiritId: 'windbelldeer', name: '风铃鹿', element: '风', rarity: '传奇', habitat: '彩云桥', catchRate: 0.22, description: '角上挂着透明风铃，走一步就响起清清亮亮的风声。', favoriteFood: '清风梨冻', primaryColor: '#a6ddd6', accentColor: '#f8f0b2', shape: 'windbell-deer' }),
-  spirit({ spiritId: 'rainbowwingdrake', name: '虹翼龙', element: '风', rarity: '神话', habitat: '彩云桥', catchRate: 0.1, description: '彩色小翼会在云边展开，像把一段彩虹轻轻托住。', favoriteFood: '虹糖霜', primaryColor: '#86d8ff', accentColor: '#ffb7df', shape: 'rainbow-wing-drake' })
+  spirit({ spiritId: 'shellmooncat', name: '贝月猫', element: '水', rarity: '常见', habitat: '月光滩', catchRate: 0.78, description: '喜欢把贝壳当小枕头，月光照到尾巴时会轻轻发亮。', favoriteFood: '海月奶冻', primaryColor: '#8fd7f0', accentColor: '#fff1bf', shape: 'bubble-pup' }),
+  spirit({ spiritId: 'tidelamb', name: '潮绵羊', element: '水', rarity: '稀有', habitat: '月光滩', catchRate: 0.5, description: '绵软的毛像退潮后的白浪，跑过沙滩会留下亮晶晶脚印。', favoriteFood: '月盐棉糖', primaryColor: '#a8e6ef', accentColor: '#f5d6ff', shape: 'warm-horn-sheep' }),
+  spirit({ spiritId: 'mooncoralfox', name: '月珊狐', element: '水', rarity: '传奇', habitat: '月光滩', catchRate: 0.24, description: '耳尖长着小珊瑚，能听见月光落在海面上的声音。', favoriteFood: '珊瑚莓冻', primaryColor: '#80c9ef', accentColor: '#ffc8df', shape: 'blue-volt-fox' }),
+  spirit({ spiritId: 'lunaraywhale', name: '月辉鲸', element: '水', rarity: '神话', habitat: '月光滩', catchRate: 0.11, description: '传说它浮上海面时，整片沙滩都会铺上一层温柔月辉。', favoriteFood: '月辉冰沙', primaryColor: '#8ca5ff', accentColor: '#fff0a6', shape: 'tide-whale' }),
+  spirit({ spiritId: 'sugarbun', name: '糖团兔', element: '草', rarity: '常见', habitat: '糖果谷', catchRate: 0.8, description: '耳朵像两片软糖叶，开心时会蹦出甜甜的香气。', favoriteFood: '叶糖饼', primaryColor: '#9bd98b', accentColor: '#ffd5e2', shape: 'cloudfluff-rabbit' }),
+  spirit({ spiritId: 'jellyspark', name: '果冻电团', element: '电', rarity: '稀有', habitat: '糖果谷', catchRate: 0.48, description: '身体像会发光的果冻，笑起来会闪出噼啪小糖星。', favoriteFood: '跳跳糖', primaryColor: '#8fd8d0', accentColor: '#ffe66d', shape: 'magnet-bean' }),
+  spirit({ spiritId: 'carameldeer', name: '焦糖鹿', element: '火', rarity: '传奇', habitat: '糖果谷', catchRate: 0.23, description: '角上流着温热焦糖光，走过的地方会留下烤甜点的香味。', favoriteFood: '焦糖花卷', primaryColor: '#e0a56f', accentColor: '#ffe08b', shape: 'sprout-deer' }),
+  spirit({ spiritId: 'dreamcandykirin', name: '梦糖麒麟', element: '风', rarity: '神话', habitat: '糖果谷', catchRate: 0.1, description: '鬃毛像彩色糖丝，奔跑时能把噩梦吹成甜甜的云。', favoriteFood: '彩梦糖霜', primaryColor: '#9fded8', accentColor: '#ffb7df', shape: 'forest-kirin' }),
+  spirit({ spiritId: 'starbud', name: '星芽仔', element: '草', rarity: '常见', habitat: '星辉森', catchRate: 0.78, description: '头顶的小芽会在夜里亮起，像一颗刚睡醒的小星星。', favoriteFood: '星露饼', primaryColor: '#7fd6a0', accentColor: '#fff0a6', shape: 'leaf-bun' }),
+  spirit({ spiritId: 'glowmoth', name: '辉粉蛾', element: '风', rarity: '稀有', habitat: '星辉森', catchRate: 0.47, description: '翅膀会撒下安静的星粉，帮迷路的朋友找到林间小路。', favoriteFood: '星粉薄片', primaryColor: '#a7ddd9', accentColor: '#f8f0b2', shape: 'ember-sparrow' }),
+  spirit({ spiritId: 'nebularabbit', name: '星云兔', element: '电', rarity: '传奇', habitat: '星辉森', catchRate: 0.22, description: '耳朵里藏着一小团星云，奔跑时会拖出蓝紫色星线。', favoriteFood: '星砂胡萝卜', primaryColor: '#88b7ff', accentColor: '#bfa7ff', shape: 'kite-hare' }),
+  spirit({ spiritId: 'starlightphoenix', name: '星辉凤', element: '火', rarity: '神话', habitat: '星辉森', catchRate: 0.1, description: '羽尾像燃着星光的花瓣，飞起时整片森林都会亮一下。', favoriteFood: '星焰莓', primaryColor: '#ff9a68', accentColor: '#fff18a', shape: 'rainbow-wing-drake' }),  spirit({ spiritId: 'rainbowwingdrake', name: '虹翼龙', element: '风', rarity: '神话', habitat: '彩云桥', catchRate: 0.1, description: '彩色小翼会在云边展开，像把一段彩虹轻轻托住。', favoriteFood: '虹糖霜', primaryColor: '#86d8ff', accentColor: '#ffb7df', shape: 'rainbow-wing-drake' })
 ];
 
-export const habitatNames = ['草丛', '池塘', '暖石', '风车', '山洞', '云台', '花林', '珊瑚湾', '熔灯台', '星磁塔', '化石坡', '彩云桥'] as const;
+export const habitatNames = ['草丛', '池塘', '暖石', '风车', '山洞', '云台', '花林', '珊瑚湾', '熔灯台', '星磁塔', '化石坡', '彩云桥', '月光滩', '糖果谷', '星辉森'] as const;

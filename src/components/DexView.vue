@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import SpiritArt from './SpiritArt.vue';
 import { spirits, type Rarity } from '../data/spirits';
-import { capturedCount, discoveredCount, openPetHome, showView, state } from '../stores/gameState';
+import { capturedCount, discoveredCount, openPetHome, openSpiritDetail, showView, state } from '../stores/gameState';
 
 function rarityClass(rarity: Rarity) {
   return `rarity-${rarity}`;
@@ -37,6 +37,7 @@ function rarityClass(rarity: Rarity) {
         <p v-else>去小岛探索发现它</p>
         <div class="dex-card-actions">
           <span class="status-pill">{{ state.save.captured[spirit.spiritId] ? '已入住' : state.save.discovered[spirit.spiritId] ? '已发现' : '未发现' }}</span>
+          <button v-if="state.save.discovered[spirit.spiritId]" class="dex-equip-button" type="button" @click="openSpiritDetail(spirit.spiritId, 'dex')">看设定</button>
           <button v-if="state.save.captured[spirit.spiritId]" class="dex-equip-button" type="button" @click="openPetHome(spirit.spiritId)">去装备</button>
         </div>
       </article>

@@ -20,7 +20,10 @@ const locations = [
   { habitat: '风车', label: '风车', x: 625, y: 430, color: '#ffe66d' },
   { habitat: '星磁塔', label: '星磁塔', x: 765, y: 430, color: '#88d8f2' },
   { habitat: '云台', label: '云台', x: 155, y: 430, color: '#bde9e5' },
-  { habitat: '彩云桥', label: '彩云桥', x: 285, y: 505, color: '#a6ddd6' }
+  { habitat: '彩云桥', label: '彩云桥', x: 285, y: 505, color: '#a6ddd6' },
+  { habitat: '月光滩', label: '月光滩', x: 820, y: 180, color: '#8ca5ff' },
+  { habitat: '糖果谷', label: '糖果谷', x: 100, y: 330, color: '#ffd5e2' },
+  { habitat: '星辉森', label: '星辉森', x: 500, y: 535, color: '#9d9af2' }
 ];
 </script>
 
@@ -108,10 +111,25 @@ const locations = [
         <circle cx="158" cy="419" r="23" fill="#efffff" stroke="#31575a" stroke-width="4" />
         <circle cx="181" cy="433" r="18" fill="#efffff" stroke="#31575a" stroke-width="4" />
       </g>
-      <g v-else>
+      <g v-else-if="item.habitat === '彩云桥'">
         <path d="M246 507c38-23 72-23 110 0" fill="none" stroke="#ffd5e2" stroke-width="10" stroke-linecap="round" />
         <path d="M250 519c35-17 68-17 102 0" fill="none" stroke="#ffe66d" stroke-width="9" stroke-linecap="round" />
         <circle cx="286" cy="497" r="11" fill="#efffff" stroke="#31575a" stroke-width="4" />
+      </g>
+      <g v-else-if="item.habitat === '月光滩'">
+        <path d="M790 196c24 18 58 18 84 0" fill="none" stroke="#dff9ff" stroke-width="8" stroke-linecap="round" />
+        <circle cx="812" cy="164" r="12" fill="#fff0a6" stroke="#31575a" stroke-width="4" />
+        <path d="M845 155c20 16 20 40 0 56" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity=".85" />
+      </g>
+      <g v-else-if="item.habitat === '糖果谷'">
+        <circle cx="86" cy="323" r="12" fill="#fff0a6" stroke="#31575a" stroke-width="4" />
+        <circle cx="112" cy="341" r="15" fill="#ffb8be" stroke="#31575a" stroke-width="4" />
+        <path d="M92 302c20 14 38 14 58 0" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" />
+      </g>
+      <g v-else>
+        <path d="m500 505 10 22 24 3-18 16 5 24-21-12-21 12 5-24-18-16 24-3Z" fill="#ffe66d" stroke="#31575a" stroke-width="4" stroke-linejoin="round" />
+        <circle cx="473" cy="542" r="8" fill="#dff9ff" stroke="#31575a" stroke-width="3" />
+        <circle cx="532" cy="542" r="8" fill="#ffd5e2" stroke="#31575a" stroke-width="3" />
       </g>
 
       <text :x="item.x" :y="item.y + 58" text-anchor="middle" class="map-text">{{ item.label }}</text>

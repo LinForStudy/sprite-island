@@ -1,9 +1,9 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, ref } from 'vue';
 import CandyJarArt from './CandyJarArt.vue';
 import SpiritArt from './SpiritArt.vue';
 import { type Rarity } from '../data/spirits';
-import { habitatProgress, showView, state, tryCapture, type CaptureResult } from '../stores/gameState';
+import { habitatProgress, openSpiritDetail, showView, state, tryCapture, type CaptureResult } from '../stores/gameState';
 
 const isThrowing = ref(false);
 
@@ -40,7 +40,10 @@ function habitatClass(habitat: string) {
     暖石: 'warm-rock',
     风车: 'windmill',
     山洞: 'cave',
-    云台: 'cloud'
+    云台: 'cloud',
+    月光滩: 'moon-beach',
+    糖果谷: 'candy-valley',
+    星辉森: 'star-forest'
   };
   return map[habitat] ?? 'grass';
 }
@@ -150,6 +153,7 @@ function throwCandyBall() {
         <button class="primary-button" type="button" :disabled="isThrowing" @click="throwCandyBall">
           {{ actionText }}
         </button>
+        <button class="soft-button" type="button" @click="openSpiritDetail(state.encounter.spiritId, 'encounter')">查看设定</button>
         <button class="soft-button" type="button" @click="showView('home', '去小屋看看新朋友吧。')">去小屋</button>
       </aside>
     </div>

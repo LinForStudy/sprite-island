@@ -16,6 +16,8 @@ const effectElement = ref('草');
 const enemyDamageText = ref('');
 const playerDamageText = ref('');
 const healText = ref('');
+const battleTip = ref('');
+const ultimateBurst = ref(false);
 const timers: number[] = [];
 
 const playerStats = computed(() => {
@@ -53,6 +55,13 @@ const enemyHpPercent = computed(() => {
   return Math.max(0, Math.min(100, (state.battle.enemyHp / enemyStats.value.hp) * 100));
 });
 
+const playerEnergyPercent = computed(() => Math.max(0, Math.min(100, state.battle.playerEnergy ?? 0)));
+const enemyConditionText = computed(() => {
+  const labels: Record<string, string> = { burn: '灼烧', wet: '湿润', vine: '缠绕', zap: '麻麻', armor: '护甲', swift: '迅捷' };
+  return labels[state.battle.enemyCondition] ?? '';
+});
+const enemyTemperamentText = computed(() => state.battle.enemyTemperament || '莽撞型');
+
 const expText = computed(() => {
   if (!battlePlayer.value || !battlePlayerPet.value) return '';
   const level = battlePlayerPet.value.level ?? 1;
@@ -62,8 +71,21 @@ const expText = computed(() => {
 });
 
 function skillLabel(skill: Skill) {
-  if (skill.type === 'heal') return '恢复';
-  return skill.type === 'physical' ? '力量' : '魔法';
+  const roleLabels: Record<string, string> = {
+    basic: '普通攻击',
+    element: '属性技能',
+    guard: '守护',
+    ultimate: '奥义'
+  };
+  return roleLabels[skill.role] ?? (skill.type === 'heal' ? '恢复' : skill.type === 'physical' ? '力量' : '魔法');
+}
+
+function skillButtonClass(skill: Skill) {
+  return [`skill-button--${skill.role}`, { 'skill-button--ready': skill.role === 'ultimate' && playerEnergyPercent.value >= 100 }];
+}
+
+function isSkillDisabled(skill: Skill) {
+  return actionLocked.value || isAnimating.value || state.battle.status !== 'active' || (skill.role === 'ultimate' && playerEnergyPercent.value < 100);
 }
 
 function schedule(callback: () => void, delay: number) {
@@ -120,9 +142,11 @@ function clearEffects() {
   enemyAttack.value = false;
   enemyHit.value = false;
   playerHit.value = false;
+  ultimateBurst.value = false;
   enemyDamageText.value = '';
   playerDamageText.value = '';
   healText.value = '';
+  battleTip.value = '';
 }
 
 function unlockAction() {
@@ -163,6 +187,8 @@ function useSkillWithEffects(skill: Skill) {
   playerAttack.value = true;
   effectKind.value = skill.type;
   effectElement.value = skill.element ?? battlePlayer.value?.element ?? '草';
+  ultimateBurst.value = skill.role === 'ultimate';
+  battleTip.value = skill.role === 'ultimate' ? '奥义释放！' : skill.role === 'guard' ? '守护展开！' : '';
   playBattleSound(skill);
 
   schedule(() => {
@@ -215,11 +241,14 @@ function useSkillWithEffects(skill: Skill) {
         <SpiritArt :spirit="battlePlayer" size="large" />
         <div class="fighter-tags"><span>{{ battlePlayer.element }}系</span><span>{{ battlePlayer.rarity }}</span><span>经验 {{ expText }}</span></div>
         <div class="hp-panel"><div class="hp-label"><strong>生命</strong><span>{{ playerHpText }}</span></div><div class="hp-bar"><span class="hp-fill player-hp" :style="{ width: `${playerHpPercent}%` }"></span></div></div>
+        <div class="energy-panel"><div class="hp-label"><strong>能量</strong><span>{{ playerEnergyPercent }} / 100</span></div><div class="energy-bar"><span class="energy-fill" :style="{ width: `${playerEnergyPercent}%` }"></span></div></div>
         <div class="battle-stats"><span>力量 {{ playerStats.power }}</span><span>防御 {{ playerStats.defense }}</span><span>魔法 {{ playerStats.magic }}</span></div>
       </article>
 
       <div class="battle-center">
-        <div v-if="playerAttack" class="battle-projectile" :class="[`battle-projectile--${effectKind}`, `battle-projectile--${effectElement}`]"><span></span></div>
+        <div v-if="ultimateBurst" class="ultimate-burst"><i></i><i></i><i></i></div>
+        <div v-if="battleTip" class="battle-callout">{{ battleTip }}</div>
+        <div v-if="playerAttack" class="battle-projectile" :class="[`battle-projectile--${effectKind}`, `battle-projectile--${effectElement}`, { 'battle-projectile--ultimate': ultimateBurst }]"><span></span></div>
         <div v-if="enemyAttack" class="enemy-projectile"><span></span></div>
         <strong>VS</strong>
         <p v-if="state.battle.status === 'active'">{{ isAnimating ? '出招中' : '选择一个技能' }}</p>
@@ -231,7 +260,8 @@ function useSkillWithEffects(skill: Skill) {
         <span v-if="enemyDamageText" class="damage-pop enemy-damage">{{ enemyDamageText }}</span>
         <div class="fighter-meta"><span>野外 · 无装备</span><strong>{{ battleEnemy.name }} Lv.{{ state.battle.enemyLevel }}</strong></div>
         <SpiritArt :spirit="battleEnemy" size="large" />
-        <div class="fighter-tags"><span>{{ battleEnemy.element }}系</span><span>{{ battleEnemy.rarity }}</span></div>
+        <div class="fighter-tags"><span>{{ battleEnemy.element }}系</span><span>{{ battleEnemy.rarity }}</span><span>{{ enemyTemperamentText }}</span></div>
+        <div v-if="enemyConditionText" class="condition-chip">{{ enemyConditionText }}</div>
         <div class="hp-panel"><div class="hp-label"><strong>生命</strong><span>{{ enemyHpText }}</span></div><div class="hp-bar"><span class="hp-fill enemy-hp" :style="{ width: `${enemyHpPercent}%` }"></span></div></div>
         <div class="battle-stats"><span>力量 {{ enemyStats.power }}</span><span>防御 {{ enemyStats.defense }}</span><span>魔法 {{ enemyStats.magic }}</span></div>
       </article>
@@ -242,8 +272,9 @@ function useSkillWithEffects(skill: Skill) {
             v-for="skill in battlePlayer.skills"
             :key="skill.id"
             class="skill-button"
+            :class="skillButtonClass(skill)"
             type="button"
-            :disabled="actionLocked || isAnimating || state.battle.status !== 'active'"
+            :disabled="isSkillDisabled(skill)"
             @pointerdown.prevent
             @click.prevent="useSkillWithEffects(skill)"
           >

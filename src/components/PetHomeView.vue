@@ -3,7 +3,7 @@ import { computed, ref, watchEffect } from 'vue';
 import SpiritArt from './SpiritArt.vue';
 import { expToNext } from '../data/battle';
 import { equipmentSlots, slotLabels, type EquipmentSlot } from '../data/equipment';
-import { careFor, capturedSpirits, equipItem, equipmentInstances, equipmentInstancesForSlot, getEquippedItems, getPetStats, restoreAllPets, showView, state, unequipSlot } from '../stores/gameState';
+import { careFor, capturedSpirits, equipItem, equipmentInstances, equipmentInstancesForSlot, getEquippedItems, getPetStats, openSpiritDetail, restoreAllPets, showView, state, unequipSlot } from '../stores/gameState';
 
 type EquipmentFilter = EquipmentSlot | 'all';
 
@@ -170,6 +170,7 @@ function unequipSelected(slot: EquipmentSlot) {
             <button class="primary-button" type="button" @click="careFor(selectedSpirit.spiritId, 'feed')">喂食</button>
             <button class="soft-button" type="button" @click="careFor(selectedSpirit.spiritId, 'clean')">清洁</button>
             <button class="soft-button" type="button" @click="careFor(selectedSpirit.spiritId, 'pet')">摸摸</button>
+            <button class="soft-button" type="button" @click="openSpiritDetail(selectedSpirit.spiritId, 'home')">查看设定</button>
           </div>
         </template>
 

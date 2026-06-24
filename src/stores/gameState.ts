@@ -1,12 +1,14 @@
 import { computed, reactive } from 'vue';
-import { calculateSkillResult, expReward, expToNext, getStats, maxLevel } from '../data/battle';
+import { calculateSkillResult, elementMultiplier, expReward, expToNext, getStats, maxLevel } from '../data/battle';
 import { equipmentById, emptyEquipmentSlots, equipmentPowerScore, rollEquipmentDrop, type Equipment, type EquipmentSlot, type EquipmentSlots } from '../data/equipment';
-import { rarityWeights, spirits, type BattleStats, type Skill, type Spirit } from '../data/spirits';
+import { rarityWeights, spirits, type BattleStats, type ElementType, type Skill, type Spirit } from '../data/spirits';
 
-type ViewName = 'map' | 'encounter' | 'dex' | 'home' | 'battlePrep' | 'battle' | 'battleResult';
+type ViewName = 'map' | 'encounter' | 'dex' | 'home' | 'battlePrep' | 'battle' | 'battleResult' | 'spiritDetail';
 export type CaptureResult = 'captured' | 'already' | 'failed' | 'none';
 export type BattleStatus = 'idle' | 'active' | 'won' | 'lost';
 export type BattleCaptureStatus = 'locked' | 'idle' | 'drawing' | 'ready' | 'capturing' | 'captured' | 'failed' | 'already';
+type BattleCondition = '' | 'burn' | 'wet' | 'vine' | 'zap' | 'armor' | 'swift';
+type EnemyTemperament = '莽撞型' | '胆小型' | '聪明型' | '治疗型' | '暴走型';
 
 interface BattleCaptureBall {
   id: string;
@@ -56,6 +58,12 @@ interface BattleState {
   enemyId: string;
   enemyLevel: number;
   enemyHp: number;
+  playerEnergy: number;
+  combo: number;
+  playerGuardTurns: number;
+  enemyCondition: BattleCondition;
+  enemyConditionTurns: number;
+  enemyTemperament: EnemyTemperament;
   log: string[];
 }
 
@@ -507,9 +515,11 @@ export const state = reactive({
   save: initialLoad.save,
   captureMotion: '' as '' | 'shake' | 'sparkle',
   battlePrep: { habitat: '', selectedId: '' },
-  battle: { status: 'idle', habitat: '', playerId: '', enemyId: '', enemyLevel: 1, enemyHp: 0, log: [] } as BattleState,
+  battle: { status: 'idle', habitat: '', playerId: '', enemyId: '', enemyLevel: 1, enemyHp: 0, playerEnergy: 0, combo: 0, playerGuardTurns: 0, enemyCondition: '', enemyConditionTurns: 0, enemyTemperament: '莽撞型', log: [] } as BattleState,
   battleResult: defaultBattleResult(),
   homeSelectedId: '',
+  detailSpiritId: '',
+  detailReturnView: 'dex' as ViewName,
   storageRevision: 0
 });
 normalizeAllPets();
@@ -631,6 +641,19 @@ export function showView(view: ViewName, message?: string) {
   state.view = view;
   if (message) state.message = message;
 }
+
+export function openSpiritDetail(spiritId: string, returnView: ViewName = state.view) {
+  const spirit = spirits.find((item) => item.spiritId === spiritId);
+  if (!spirit) return;
+  state.detailSpiritId = spiritId;
+  state.detailReturnView = returnView;
+  showView('spiritDetail');
+}
+
+export function closeSpiritDetail() {
+  const target = state.detailReturnView === 'spiritDetail' ? 'dex' : state.detailReturnView;
+  showView(target);
+}
 export function openPetHome(spiritId?: string) {
   if (spiritId && state.save.captured[spiritId]) state.homeSelectedId = spiritId;
   showView('home', spiritId && state.save.captured[spiritId] ? `${spiritById(spiritId).name}的装备也可以给其他萌灵穿同款。` : '欢迎回到萌灵小屋。');
@@ -714,6 +737,56 @@ export function selectBattleSpirit(spiritId: string) {
   state.message = `${spiritById(spiritId).name}准备好了。`;
 }
 
+
+function clampEnergy(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function rollEnemyTemperament(): EnemyTemperament {
+  const temperaments: EnemyTemperament[] = ['莽撞型', '胆小型', '聪明型', '治疗型', '暴走型'];
+  return temperaments[Math.floor(Math.random() * temperaments.length)] ?? '莽撞型';
+}
+
+function temperamentOpening(temperament: EnemyTemperament) {
+  const copy: Record<EnemyTemperament, string> = {
+    莽撞型: '这只萌灵看起来很暴躁，可能会一直猛攻！',
+    胆小型: '这只萌灵有点胆小，血少时会先保护自己。',
+    聪明型: '这只萌灵正在观察你，可能会找克制机会。',
+    治疗型: '这只萌灵很会照顾自己，受伤后可能恢复。',
+    暴走型: '这只萌灵越紧张越用力，血越少越危险。'
+  };
+  return copy[temperament];
+}
+
+function conditionForElement(element: ElementType): BattleCondition {
+  return ({ 草: 'vine', 水: 'wet', 火: 'burn', 电: 'zap', 土: 'armor', 风: 'swift' } as Record<ElementType, BattleCondition>)[element];
+}
+
+
+function conditionMessage(condition: BattleCondition, targetName: string) {
+  const copy: Record<BattleCondition, string> = {
+    '': '',
+    burn: `${targetName}被小火星烫到了！`,
+    wet: `${targetName}身上挂满了泡泡！`,
+    vine: `${targetName}被藤蔓缠住了！`,
+    zap: `${targetName}被电得麻麻的！`,
+    armor: `${targetName}被岩石光保护住了！`,
+    swift: `${targetName}身边刮起了轻快的风！`
+  };
+  return copy[condition];
+}
+
+function pickEnemySkill(enemy: Spirit, player: Spirit, enemyHp: number, enemyMaxHp: number, temperament: EnemyTemperament) {
+  const attackSkills = enemy.skills.filter((skill) => skill.type !== 'heal' && skill.role !== 'ultimate');
+  const guardSkill = enemy.skills.find((skill) => skill.role === 'guard' || skill.type === 'heal');
+  if ((temperament === '治疗型' || temperament === '胆小型') && guardSkill && enemyHp / enemyMaxHp < 0.45 && Math.random() < 0.72) return guardSkill;
+  if (temperament === '聪明型') {
+    const smart = attackSkills.find((skill) => elementMultiplier(skill.element ?? enemy.element, player.element) > 1);
+    if (smart) return smart;
+  }
+  if (temperament === '莽撞型' && attackSkills.length) return attackSkills[Math.floor(Math.random() * attackSkills.length)] ?? attackSkills[0];
+  return enemy.skills.filter((skill) => skill.role !== 'ultimate')[Math.floor(Math.random() * Math.max(1, enemy.skills.length - 1))] ?? enemy.skills[0];
+}
 export function startWildBattle(habitat: string, playerId: string) {
   normalizeAllPets();
   const pet = state.save.captured[playerId];
@@ -731,7 +804,22 @@ export function startWildBattle(habitat: string, playerId: string) {
   const enemyLevel = enemyLevelFor(playerLevel, playerId);
 
   state.battleResult = defaultBattleResult();
-  state.battle = { status: 'active', habitat, playerId, enemyId: enemy.spiritId, enemyLevel, enemyHp: getStats(enemy, enemyLevel).hp, log: [`${spiritById(playerId).name}出战！野外的${enemy.name}出现了。`] };
+  const enemyTemperament = rollEnemyTemperament();
+  state.battle = {
+    status: 'active',
+    habitat,
+    playerId,
+    enemyId: enemy.spiritId,
+    enemyLevel,
+    enemyHp: getStats(enemy, enemyLevel).hp,
+    playerEnergy: 0,
+    combo: 0,
+    playerGuardTurns: 0,
+    enemyCondition: '',
+    enemyConditionTurns: 0,
+    enemyTemperament,
+    log: [temperamentOpening(enemyTemperament), `${spiritById(playerId).name}出战！野外的${enemy.name}出现了。`]
+  };
   state.message = `${habitat}的野外挑战开始了。`;
   showView('battle');
   save();
@@ -743,17 +831,76 @@ export function useBattleSkill(skill: Skill) {
   const enemy = battleEnemy.value;
   const pet = battlePlayerPet.value;
   if (!player || !enemy || !pet) return;
+  if (skill.role === 'ultimate' && state.battle.playerEnergy < 100) {
+    state.battle.log.unshift('奥义能量还没满，先用其他招式攒能量吧。');
+    return;
+  }
 
   const playerLevel = pet.level ?? 1;
   const enemyLevel = state.battle.enemyLevel;
   const playerStats = getPetBattleStatsInternal(player.spiritId);
   const enemyStats = getStats(enemy, enemyLevel);
   const playerHp = pet.currentHp ?? playerStats.hp;
+  const skillElement = skill.element ?? player.element;
+  const isUltimate = skill.role === 'ultimate';
+  const wetBonus = state.battle.enemyCondition === 'wet' && skillElement === '电' ? 0.25 : 0;
+  const ultimateBonus = isUltimate ? 0.35 : 0;
 
-  const playerResult = calculateSkillResult({ attacker: player, attackerLevel: playerLevel, defender: enemy, defenderLevel: enemyLevel, defenderHp: state.battle.enemyHp, attackerHp: playerHp, skill, attackerStats: playerStats, defenderStats: enemyStats, damageBonusRate: equipmentDamageBonus(player.spiritId, skill), healBonusRate: equipmentHealBonus(player.spiritId) });
+  const playerResult = calculateSkillResult({
+    attacker: player,
+    attackerLevel: playerLevel,
+    defender: enemy,
+    defenderLevel: enemyLevel,
+    defenderHp: state.battle.enemyHp,
+    attackerHp: playerHp,
+    skill,
+    attackerStats: playerStats,
+    defenderStats: enemyStats,
+    damageBonusRate: equipmentDamageBonus(player.spiritId, skill) + wetBonus + ultimateBonus,
+    healBonusRate: equipmentHealBonus(player.spiritId)
+  });
 
   pet.currentHp = playerResult.nextAttackerHp;
   state.battle.enemyHp = playerResult.nextDefenderHp;
+
+  if (isUltimate) state.battle.playerEnergy = 0;
+  else {
+    const advantageEnergy = playerResult.multiplier > 1 ? 20 : 0;
+    state.battle.playerEnergy = clampEnergy(state.battle.playerEnergy + 22 + advantageEnergy);
+  }
+
+  if (skill.role === 'guard') {
+    state.battle.playerGuardTurns = 1;
+    state.battle.log.unshift(`${player.name}撑起了守护光，下一次受到的伤害会减少。`);
+  }
+
+  if (skill.type !== 'heal' && playerResult.damage > 0) {
+    if (playerResult.multiplier > 1) {
+      state.battle.combo += 1;
+      state.battle.log.unshift(`效果拔群！能量提升，克制连击 ${state.battle.combo}。`);
+      if (state.battle.combo >= 2) {
+        const comboDamage = Math.max(2, Math.round(playerResult.damage * 0.22));
+        state.battle.enemyHp = Math.max(0, state.battle.enemyHp - comboDamage);
+        state.battle.log.unshift(`连续克制！追加一击造成 ${comboDamage} 点伤害。`);
+      }
+    } else {
+      state.battle.combo = 0;
+    }
+
+    const condition = conditionForElement(skillElement);
+    if (condition === 'armor') {
+      state.battle.playerGuardTurns = 1;
+      state.battle.log.unshift(`${player.name}被岩石光保护住了！`);
+    } else if (condition === 'swift') {
+      state.battle.playerEnergy = clampEnergy(state.battle.playerEnergy + 10);
+      state.battle.log.unshift(`${player.name}身边刮起了轻快的风！`);
+    } else {
+      state.battle.enemyCondition = condition;
+      state.battle.enemyConditionTurns = 2;
+      const message = conditionMessage(condition, enemy.name);
+      if (message) state.battle.log.unshift(message);
+    }
+  }
 
   const multiplierText = playerResult.multiplier > 1 ? '效果很好！' : playerResult.multiplier < 1 ? '效果一般。' : '';
   if (skill.type === 'heal') state.battle.log.unshift(`${player.name}使用${skill.name}，恢复 ${playerResult.heal} 点生命。`);
@@ -776,16 +923,47 @@ export function useBattleSkill(skill: Skill) {
     return;
   }
 
-  const enemySkill = enemy.skills[Math.floor(Math.random() * enemy.skills.length)] ?? enemy.skills[0];
-  const enemyResult = calculateSkillResult({ attacker: enemy, attackerLevel: enemyLevel, defender: player, defenderLevel: playerLevel, defenderHp: pet.currentHp ?? playerStats.hp, attackerHp: state.battle.enemyHp, skill: enemySkill, defenderStats: playerStats });
+  if (state.battle.enemyCondition === 'burn') {
+    const burnDamage = Math.max(2, Math.floor(enemyStats.hp * 0.06));
+    state.battle.enemyHp = Math.max(0, state.battle.enemyHp - burnDamage);
+    state.battle.log.unshift(`${enemy.name}被灼烧，掉了 ${burnDamage} 点生命。`);
+  }
+  if (state.battle.enemyConditionTurns > 0) state.battle.enemyConditionTurns -= 1;
+  if (state.battle.enemyConditionTurns <= 0) state.battle.enemyCondition = '';
+
+  if (state.battle.enemyHp <= 0) {
+    const reward = Math.round(expReward(enemyLevel, enemy.rarity) * (1 + equipmentExpBonus(player.spiritId)));
+    const equipmentDrop = rollEquipmentDrop(enemyLevel, enemy.rarity);
+    pet.exp = (pet.exp ?? 0) + reward;
+    if (equipmentDrop) state.save.inventory.equipment.push(equipmentDrop.id);
+    const levelMessages = levelUpIfNeeded(player.spiritId);
+    state.battle.status = 'won';
+    state.battle.log.unshift(`胜利！获得 ${reward} 点经验。`);
+    setBattleResult('won', player, enemy, reward, levelMessages, equipmentDrop);
+    save();
+    return;
+  }
+
+  const enemySkill = pickEnemySkill(enemy, player, state.battle.enemyHp, enemyStats.hp, state.battle.enemyTemperament);
+  const enemyLowHpBonus = state.battle.enemyTemperament === '暴走型' ? Math.max(0, 1 - state.battle.enemyHp / enemyStats.hp) * 0.28 : 0;
+  const enemyResult = calculateSkillResult({ attacker: enemy, attackerLevel: enemyLevel, defender: player, defenderLevel: playerLevel, defenderHp: pet.currentHp ?? playerStats.hp, attackerHp: state.battle.enemyHp, skill: enemySkill, defenderStats: playerStats, damageBonusRate: enemyLowHpBonus });
 
   if (enemySkill.type === 'heal') {
     state.battle.enemyHp = enemyResult.nextAttackerHp;
     state.battle.log.unshift(`野外的${enemy.name}使用${enemySkill.name}，恢复 ${enemyResult.heal} 点生命。`);
   } else {
-    pet.currentHp = enemyResult.nextDefenderHp;
+    let enemyDamage = enemyResult.damage;
+    if (state.battle.playerGuardTurns > 0) enemyDamage = Math.max(1, Math.ceil(enemyDamage * 0.55));
+    if (state.battle.enemyCondition === 'vine') enemyDamage = Math.max(1, Math.ceil(enemyDamage * 0.75));
+    if (state.battle.enemyCondition === 'zap' && Math.random() < 0.28) {
+      enemyDamage = 0;
+      state.battle.log.unshift(`${enemy.name}麻麻的，动作慢了一拍！`);
+    }
+    pet.currentHp = Math.max(0, (pet.currentHp ?? playerStats.hp) - enemyDamage);
+    if (state.battle.playerGuardTurns > 0) state.battle.playerGuardTurns = 0;
+    state.battle.playerEnergy = clampEnergy(state.battle.playerEnergy + (enemyDamage > 0 ? 12 : 6));
     const enemyMultiplierText = enemyResult.multiplier > 1 ? '效果很好！' : enemyResult.multiplier < 1 ? '效果一般。' : '';
-    state.battle.log.unshift(`野外的${enemy.name}使用${enemySkill.name}，造成 ${enemyResult.damage} 点伤害。${enemyMultiplierText}`);
+    state.battle.log.unshift(`野外的${enemy.name}使用${enemySkill.name}，造成 ${enemyDamage} 点伤害。${enemyMultiplierText}`);
   }
 
   if ((pet.currentHp ?? 0) <= 0) {
@@ -797,7 +975,6 @@ export function useBattleSkill(skill: Skill) {
   }
   save();
 }
-
 export function drawBattleCaptureBall() {
   const result = state.battleResult;
   if (result.status !== 'won') {

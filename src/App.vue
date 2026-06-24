@@ -6,6 +6,7 @@ import DexView from './components/DexView.vue';
 import EncounterView from './components/EncounterView.vue';
 import MapView from './components/MapView.vue';
 import PetHomeView from './components/PetHomeView.vue';
+import SpiritDetailView from './components/SpiritDetailView.vue';
 import { state } from './stores/gameState';
 </script>
 
@@ -24,6 +25,7 @@ import { state } from './stores/gameState';
       <BattlePrepView v-if="state.view === 'battlePrep'" />
       <BattleView v-if="state.view === 'battle'" />
       <BattleResultView v-if="state.view === 'battleResult'" />
+      <SpiritDetailView v-if="state.view === 'spiritDetail'" />
     </div>
   </main>
 </template>
